@@ -31,6 +31,9 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Install Playwright MCP dependencies
+        run: npx playwright install --with-deps chromium
+
       - name: Run Claude Code Review
         id: claude-review
         uses: anthropics/claude-code-action@v1
@@ -39,6 +42,18 @@ jobs:
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
           plugins: 'code-review@claude-code-plugins'
           prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
+
+          # MCP Playwright server for browser automation during review
+          mcp_config: |
+            {
+              "mcpServers": {
+                "playwright": {
+                  "command": "npx",
+                  "args": ["@playwright/mcp@latest", "--headless"]
+                }
+              }
+            }
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
 
+          allowed_tools: Bash(npm install),Bash(npm run build),Bash(npm run lint),Bash(npm run test)
