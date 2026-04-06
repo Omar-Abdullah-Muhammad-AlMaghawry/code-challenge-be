@@ -68,8 +68,22 @@ The server starts on port **3000**.
 
 ### Test
 
+Run all tests (unit + integration):
+
 ```bash
 ./mvnw test
+```
+
+Run only unit tests:
+
+```bash
+./mvnw test -Dtest="*Test"
+```
+
+Run only integration tests:
+
+```bash
+./mvnw test -Dtest="*IT"
 ```
 
 Tests use an in-memory H2 database (Oracle compatibility mode) — no Oracle instance required for CI.
