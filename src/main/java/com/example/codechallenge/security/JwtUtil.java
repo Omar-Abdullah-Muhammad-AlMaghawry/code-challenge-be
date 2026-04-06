@@ -1,6 +1,7 @@
 package com.example.codechallenge.security;
 
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
@@ -38,8 +39,12 @@ public class JwtUtil {
     }
 
     public boolean isValid(String token, UserDetails userDetails) {
-        String username = extractUsername(token);
-        return username.equals(userDetails.getUsername()) && !isExpired(token);
+        try {
+            String username = extractUsername(token);
+            return username.equals(userDetails.getUsername()) && !isExpired(token);
+        } catch (JwtException e) {
+            return false;
+        }
     }
 
     private boolean isExpired(String token) {
