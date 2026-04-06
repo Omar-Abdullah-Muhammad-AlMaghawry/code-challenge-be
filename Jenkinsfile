@@ -7,22 +7,22 @@ pipeline {
     }
 
     environment {
-        APP_NAME  = 'code-challenge-be'
-        IMAGE_TAG = "${env.GIT_COMMIT[0..7]}"
+        APP_NAME     = 'my-spring-app'
+        IMAGE_TAG    = "${env.GIT_COMMIT[0..7]}"
+        GITHUB_TOKEN = credentials('github-token')
+        GITHUB_REPO  = 'Omar-Abdullah-Muhammad-AlMaghawry/code-challenge-be'
     }
 
     stages {
 
         stage('Checkout') {
             steps {
-                echo "Branch: ${env.BRANCH_NAME}"
                 checkout scm
             }
         }
 
         stage('Test') {
             steps {
-                echo 'Running tests...'
                 sh 'mvn test'
             }
             post {
@@ -34,7 +34,6 @@ pipeline {
 
         stage('Build') {
             steps {
-                echo 'Building JAR...'
                 sh 'mvn package -DskipTests'
                 archiveArtifacts artifacts: 'target/*.jar'
             }
@@ -42,14 +41,46 @@ pipeline {
 
         stage('Docker Build') {
             steps {
-                echo 'Building Docker image...'
                 sh "docker build -t ${APP_NAME}:${IMAGE_TAG} ."
             }
         }
 
-        stage('Done') {
+        stage('Upload JAR to GitHub Release') {
             steps {
-                echo "✅ Image built: ${APP_NAME}:${IMAGE_TAG}"
+                script {
+                    def jarFile = sh(
+                        script: 'ls target/*.jar | head -1',
+                        returnStdout: true
+                    ).trim()
+
+                    sh """
+                        # Create release
+                        curl -X POST \
+                          -H "Authorization: token ${GITHUB_TOKEN}" \
+                          -H "Content-Type: application/json" \
+                          https://api.github.com/repos/${GITHUB_REPO}/releases \
+                          -d '{
+                            "tag_name": "build-${IMAGE_TAG}",
+                            "name": "Build ${IMAGE_TAG}",
+                            "body": "Jenkins build #${env.BUILD_NUMBER}"
+                          }' > release.json
+
+                        # Extract upload URL
+                        UPLOAD_URL=\$(cat release.json \
+                          | grep upload_url \
+                          | cut -d'"' -f4 \
+                          | cut -d'{' -f1)
+
+                        # Upload JAR
+                        curl -X POST \
+                          -H "Authorization: token ${GITHUB_TOKEN}" \
+                          -H "Content-Type: application/java-archive" \
+                          --data-binary @${jarFile} \
+                          "\${UPLOAD_URL}?name=${APP_NAME}-${IMAGE_TAG}.jar"
+
+                        echo "✅ JAR uploaded to GitHub Releases"
+                    """
+                }
             }
         }
     }
