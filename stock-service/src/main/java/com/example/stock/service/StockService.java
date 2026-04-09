@@ -37,6 +37,20 @@ public class StockService {
             Map.entry("PEP", "PepsiCo Inc.")
     );
 
+    /** Static fallback used when no Finnhub API key is configured. */
+    private static final List<StockResponse> USA_FALLBACK_STOCKS = List.of(
+            StockResponse.builder().symbol("AAPL").name("Apple Inc.").price(189.30).change(2.45).changePercent(1.31).market("USA").currency("USD").build(),
+            StockResponse.builder().symbol("MSFT").name("Microsoft Corp.").price(415.50).change(5.20).changePercent(1.27).market("USA").currency("USD").build(),
+            StockResponse.builder().symbol("NVDA").name("NVIDIA Corp.").price(875.40).change(18.60).changePercent(2.17).market("USA").currency("USD").build(),
+            StockResponse.builder().symbol("AMZN").name("Amazon.com Inc.").price(182.70).change(1.90).changePercent(1.05).market("USA").currency("USD").build(),
+            StockResponse.builder().symbol("GOOGL").name("Alphabet Inc.").price(160.25).change(-0.85).changePercent(-0.53).market("USA").currency("USD").build(),
+            StockResponse.builder().symbol("META").name("Meta Platforms Inc.").price(505.10).change(7.30).changePercent(1.47).market("USA").currency("USD").build(),
+            StockResponse.builder().symbol("TSLA").name("Tesla Inc.").price(245.00).change(-3.50).changePercent(-1.41).market("USA").currency("USD").build(),
+            StockResponse.builder().symbol("JPM").name("JPMorgan Chase & Co.").price(198.60).change(1.10).changePercent(0.56).market("USA").currency("USD").build(),
+            StockResponse.builder().symbol("V").name("Visa Inc.").price(275.40).change(0.90).changePercent(0.33).market("USA").currency("USD").build(),
+            StockResponse.builder().symbol("WMT").name("Walmart Inc.").price(62.80).change(0.40).changePercent(0.64).market("USA").currency("USD").build()
+    );
+
     private static final List<StockResponse> EGX_STOCKS = List.of(
             StockResponse.builder().symbol("COMI").name("Commercial International Bank").price(56.80).change(2.30).changePercent(4.22).market("EGX").currency("EGP").build(),
             StockResponse.builder().symbol("HRHO").name("EFG Hermes Holding").price(24.15).change(1.05).changePercent(4.54).market("EGX").currency("EGP").build(),
@@ -83,7 +97,7 @@ public class StockService {
     }
 
     private synchronized List<StockResponse> getUsaStocks() {
-        if (apiKey.isBlank()) return Collections.emptyList();
+        if (apiKey.isBlank()) return USA_FALLBACK_STOCKS;
         if (Instant.now().isBefore(cacheExpiry)) return cachedUsaStocks;
 
         List<StockResponse> fresh = new ArrayList<>();
