@@ -1,5 +1,4 @@
 services:
-
   nginx:
     image: nginx:alpine
     container_name: nginx-gateway
@@ -19,7 +18,8 @@ services:
       dockerfile: auth-service/Dockerfile
     container_name: auth-service
     environment:
-      - SPRING_DATASOURCE_URL=jdbc:oracle:thin:@oracle-db:1521/XEPDB1
+      - SERVER_PORT=8081
+      - SPRING_DATASOURCE_URL=jdbc:oracle:thin:@host.docker.internal:1521/XEPDB1
       - SPRING_DATASOURCE_USERNAME=DEMO
       - SPRING_DATASOURCE_PASSWORD=demo12
       - JWT_SECRET=3d8f2a91c7b4e56f0a1d9e2c3b7f8a4d5e6c7b8a9d0e1f2c3b4a5d6e7f8c9d0
@@ -33,6 +33,7 @@ services:
       dockerfile: dashboard-service/Dockerfile
     container_name: dashboard-service
     environment:
+      - SERVER_PORT=8082
       - JWT_SECRET=3d8f2a91c7b4e56f0a1d9e2c3b7f8a4d5e6c7b8a9d0e1f2c3b4a5d6e7f8c9d0
       - JWT_EXPIRATION=86400000
       - CORS_ALLOWED_ORIGINS=http://localhost:4200
@@ -44,6 +45,7 @@ services:
       dockerfile: stock-service/Dockerfile
     container_name: stock-service
     environment:
+      - SERVER_PORT=8083
       - JWT_SECRET=3d8f2a91c7b4e56f0a1d9e2c3b7f8a4d5e6c7b8a9d0e1f2c3b4a5d6e7f8c9d0
       - JWT_EXPIRATION=86400000
       - CORS_ALLOWED_ORIGINS=http://localhost:4200
