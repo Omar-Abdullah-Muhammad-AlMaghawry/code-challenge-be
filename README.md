@@ -1,6 +1,6 @@
-# Code Challenge - Backend
+# Code Challenge — Backend
 
-A microservices-based Spring Boot backend providing JWT authentication, dashboard data, and stock market information for the Code Challenge application.
+A microservices-based Spring Boot backend providing JWT authentication, dashboard data, and real-time stock market information for the Code Challenge application.
 
 ## Architecture
 
@@ -13,11 +13,11 @@ nginx :3000  (API gateway)
   └── /api/stocks/**     → stock-service:8083
 ```
 
-| Service            | Port | Database      | Responsibility                        |
-|--------------------|------|---------------|---------------------------------------|
-| `auth-service`     | 8081 | Oracle (DEMO) | User registration, login, JWT issuing |
-| `dashboard-service`| 8082 | None          | Stats and activity feed               |
-| `stock-service`    | 8083 | None          | EGX + USA stock data                  |
+| Service             | Port | Database      | Responsibility                           |
+|---------------------|------|---------------|------------------------------------------|
+| `auth-service`      | 8081 | Oracle (DEMO) | User registration, login, JWT issuing    |
+| `dashboard-service` | 8082 | None          | Stats and activity feed                  |
+| `stock-service`     | 8083 | None          | EGX + USA stocks, price history charts   |
 
 JWT is validated independently in each service using the shared secret — no inter-service calls required.
 
@@ -29,6 +29,7 @@ JWT is validated independently in each service using the shared secret — no in
 - **Spring Data JPA** — auth-service only
 - **Oracle Database** — auth-service persistent storage (XEPDB1)
 - **JJWT 0.12** — JWT generation and validation
+- **Yahoo Finance API** — free, no-key real-time and historical stock prices for USA symbols
 - **nginx** — API gateway and reverse proxy
 - **Docker / docker-compose** — containerised local and CI deployment
 - **Lombok** — boilerplate reduction
@@ -53,18 +54,29 @@ All routes go through nginx on port **3000**.
 
 ### Stocks — `/api/stocks`
 
-| Method | Path | Description                                              | Auth required |
-|--------|------|----------------------------------------------------------|---------------|
-| GET    | `/`  | List stocks sorted by 24h change % (highest profit first)| Yes           |
+| Method | Path                        | Description                                               | Auth required |
+|--------|-----------------------------|-----------------------------------------------------------|---------------|
+| GET    | `/`                         | List stocks sorted by 24h change % (highest profit first) | Yes           |
+| GET    | `/{symbol}/history`         | OHLC price history for a given symbol and period          | Yes           |
 
-**Query parameters:**
+**Stock list query parameters:**
 
-| Param    | Example          | Effect                          |
-|----------|------------------|---------------------------------|
-| `search` | `?search=apple`  | Filter by symbol or name        |
-| `market` | `?market=EGX`    | `EGX`, `USA`, or `ALL` (default)|
+| Param    | Example         | Effect                           |
+|----------|-----------------|----------------------------------|
+| `search` | `?search=apple` | Filter by symbol or name         |
+| `market` | `?market=EGX`   | `EGX`, `USA`, or `ALL` (default) |
 
-Stock data: USA stocks are fetched live from Finnhub (5-min cache); EGX stocks (15 EGX30 symbols) are mocked — no free real-time EGX API exists.
+**History query parameters:**
+
+| Param    | Example       | Allowed values                        |
+|----------|---------------|---------------------------------------|
+| `period` | `?period=1Y`  | `1D`, `5D`, `1M`, `YTD`, `1Y`, `5Y`, `Max` |
+
+History data source:
+- **USA stocks** — fetched from [Yahoo Finance](https://finance.yahoo.com/) (no API key required). Interval is automatically chosen per period (e.g. `5m` for 1D, `1wk` for 1Y).
+- **EGX stocks** — price history is not available from a free public API; the endpoint returns an empty list for EGX symbols.
+
+Stock list data: USA prices are fetched live from Finnhub (5-min cache); EGX stocks (EGX30 symbols) are mocked.
 
 ## Getting Started
 
@@ -116,13 +128,15 @@ cors.allowed-origins=http://localhost:4200
 
 **stock-service** (`stock-service/src/main/resources/application.properties`):
 ```properties
-finnhub.api-key=        # get a free key at https://finnhub.io
+finnhub.api-key=        # optional — used for live USA stock list prices
 jwt.secret=<your-secret>
 ```
 
+> No API key is needed for price history — it uses Yahoo Finance directly.
+
 `dashboard-service` only needs `jwt.secret`, `jwt.expiration`, and `cors.allowed-origins`.
 
-## Test
+## Tests
 
 Run all tests across all services:
 
@@ -130,25 +144,13 @@ Run all tests across all services:
 ./mvnw test
 ```
 
-Run only unit tests:
-
-```bash
-./mvnw test -Dtest="*Test"
-```
-
-Run only integration tests:
-
-```bash
-./mvnw test -Dtest="*IT"
-```
-
-Tests use an in-memory H2 database (Oracle compatibility mode) for auth-service — no Oracle instance required for CI. dashboard-service and stock-service have no DB dependency at all.
+Tests use an in-memory H2 database (Oracle compatibility mode) for auth-service — no Oracle instance required for CI. `dashboard-service` and `stock-service` have no DB dependency at all.
 
 ## Project Structure
 
 ```
 code-challenge-be/
-├── auth-service/               # Auth, User entity, Oracle DB
+├── auth-service/
 │   └── src/main/java/com/example/auth/
 │       ├── controller/         # AuthController
 │       ├── dto/                # LoginRequest, RegisterRequest, LoginResponse
@@ -156,18 +158,20 @@ code-challenge-be/
 │       ├── repository/         # UserRepository
 │       ├── security/           # JwtUtil, JwtAuthFilter, SecurityConfig
 │       └── service/            # AuthService, UserService
-├── dashboard-service/          # Dashboard data, no DB
+├── dashboard-service/
 │   └── src/main/java/com/example/dashboard/
 │       ├── controller/         # DashboardController
 │       ├── dto/                # StatResponse, ActivityResponse
 │       ├── security/           # JwtUtil, JwtAuthFilter, SecurityConfig
 │       └── service/            # DashboardService
-├── stock-service/              # EGX + USA stocks, no DB
+├── stock-service/
 │   └── src/main/java/com/example/stock/
-│       ├── controller/         # StockController
-│       ├── dto/                # StockResponse
+│       ├── controller/         # StockController (list + history endpoints)
+│       ├── dto/response/
+│       │   ├── StockResponse.java   # Symbol, name, price, change, market, sparkline
+│       │   └── CandlePoint.java     # Timestamp + close price for history charts
 │       ├── security/           # JwtUtil, JwtAuthFilter, SecurityConfig
-│       └── service/            # StockService (Finnhub + EGX mock)
+│       └── service/            # StockService (Finnhub list, Yahoo Finance history, EGX mock)
 ├── nginx/
 │   └── nginx.conf              # Gateway routing config
 ├── docker-compose.yml          # Orchestrates all services + nginx
