@@ -17,4 +17,9 @@ public class StockResponse {
     private double changePercent;
     private String market;
     private String currency;
+    // Today's intraday stats from quote endpoint
+    private double open;
+    private double dayHigh;
+    private double dayLow;
+    private double prevClose;
 }

@@ -1,13 +1,11 @@
 package com.example.stock.controller;
 
+import com.example.stock.dto.response.CandlePoint;
 import com.example.stock.dto.response.StockResponse;
 import com.example.stock.service.StockService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
@@ -23,5 +21,12 @@ public class StockController {
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String market) {
         return ResponseEntity.ok(stockService.getAllStocks(search, market));
+    }
+
+    @GetMapping("/{symbol}/history")
+    public ResponseEntity<List<CandlePoint>> getHistory(
+            @PathVariable String symbol,
+            @RequestParam(defaultValue = "1D") String period) {
+        return ResponseEntity.ok(stockService.getHistory(symbol, period));
     }
 }

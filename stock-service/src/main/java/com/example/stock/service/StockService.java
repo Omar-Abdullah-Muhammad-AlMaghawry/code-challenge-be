@@ -1,13 +1,21 @@
 package com.example.stock.service;
 
+import com.example.stock.dto.response.CandlePoint;
 import com.example.stock.dto.response.StockResponse;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.JsonNode;
 import lombok.Data;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -100,6 +108,10 @@ private static final List<StockResponse> EGX_STOCKS = List.of(
                             .changePercent(quote.getChangePercent())
                             .market("USA")
                             .currency("USD")
+                            .open(quote.getOpen())
+                            .dayHigh(quote.getDayHigh())
+                            .dayLow(quote.getDayLow())
+                            .prevClose(quote.getPrevClose())
                             .build());
                 }
             } catch (Exception ignored) {
@@ -111,10 +123,119 @@ private static final List<StockResponse> EGX_STOCKS = List.of(
         return cachedUsaStocks;
     }
 
+    // ── History ────────────────────────────────────────────────────────────────
+
+    public List<CandlePoint> getHistory(String symbol, String period) {
+        boolean isUsa = USA_SYMBOLS.containsKey(symbol.toUpperCase());
+        if (isUsa) {
+            List<CandlePoint> real = getYahooHistory(symbol.toUpperCase(), period);
+            if (!real.isEmpty()) return real;
+        }
+        // EGX stocks or fallback: deterministic mock history
+        double currentPrice = 0, change = 0;
+        Optional<StockResponse> opt = EGX_STOCKS.stream()
+                .filter(s -> s.getSymbol().equalsIgnoreCase(symbol)).findFirst();
+        if (opt.isEmpty()) opt = cachedUsaStocks.stream()
+                .filter(s -> s.getSymbol().equalsIgnoreCase(symbol)).findFirst();
+        if (opt.isPresent()) {
+            currentPrice = opt.get().getPrice();
+            change       = opt.get().getChange();
+        }
+        return generateMockHistory(symbol, period, currentPrice, change);
+    }
+
+    private List<CandlePoint> getYahooHistory(String symbol, String period) {
+        String interval, range;
+        switch (period) {
+            case "1D"  -> { interval = "5m";  range = "1d";  }
+            case "5D"  -> { interval = "60m"; range = "5d";  }
+            case "1M"  -> { interval = "1d";  range = "1mo"; }
+            case "YTD" -> { interval = "1d";  range = "ytd"; }
+            case "1Y"  -> { interval = "1wk"; range = "1y";  }
+            case "5Y"  -> { interval = "1mo"; range = "5y";  }
+            default    -> { interval = "3mo"; range = "max"; }
+        }
+        try {
+            String url = String.format(
+                    "https://query1.finance.yahoo.com/v8/finance/chart/%s?interval=%s&range=%s",
+                    symbol, interval, range);
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("User-Agent", "Mozilla/5.0");
+            HttpEntity<Void> entity = new HttpEntity<>(headers);
+            ResponseEntity<JsonNode> response = restTemplate.exchange(url, HttpMethod.GET, entity, JsonNode.class);
+            JsonNode result = response.getBody().path("chart").path("result").get(0);
+            JsonNode timestamps = result.path("timestamp");
+            JsonNode closes = result.path("indicators").path("quote").get(0).path("close");
+            List<CandlePoint> pts = new ArrayList<>();
+            for (int i = 0; i < timestamps.size(); i++) {
+                JsonNode c = closes.get(i);
+                if (c != null && !c.isNull() && c.isNumber()) {
+                    pts.add(new CandlePoint(timestamps.get(i).asLong(), c.asDouble()));
+                }
+            }
+            return pts;
+        } catch (Exception ignored) {}
+        return Collections.emptyList();
+    }
+
+    private List<CandlePoint> generateMockHistory(String symbol, String period,
+                                                   double currentPrice, double change) {
+        if (currentPrice <= 0) return Collections.emptyList();
+        double prevClose = currentPrice - change;
+
+        int n = switch (period) {
+            case "1D"  -> 78;
+            case "5D"  -> 60;
+            case "1M"  -> 30;
+            case "YTD" -> 90;
+            case "1Y"  -> 52;
+            case "5Y"  -> 60;
+            default    -> 60;
+        };
+
+        long now = Instant.now().getEpochSecond();
+        long periodSec = switch (period) {
+            case "1D"  -> 23400L;
+            case "5D"  -> 5L  * 86400;
+            case "1M"  -> 30L * 86400;
+            case "YTD" -> now - LocalDate.of(LocalDate.now().getYear(), 1, 1)
+                                         .atStartOfDay(ZoneOffset.UTC).toEpochSecond();
+            case "1Y"  -> 365L * 86400;
+            case "5Y"  -> 5L  * 365 * 86400;
+            default    -> 10L * 365 * 86400;
+        };
+
+        long startTime = now - periodSec;
+        long interval  = periodSec / Math.max(n - 1, 1);
+
+        long seed = symbol.chars().reduce(0, (a, b) -> a * 31 + b) + period.hashCode();
+        Random rand = new Random(seed);
+
+        double trend     = (currentPrice - prevClose) / (n - 1);
+        double noise     = currentPrice * 0.008;
+        double price     = prevClose;
+        List<CandlePoint> pts = new ArrayList<>();
+
+        for (int i = 0; i < n; i++) {
+            price = (i == n - 1)
+                    ? currentPrice
+                    : price + trend + (rand.nextDouble() - 0.5) * noise;
+            pts.add(new CandlePoint(startTime + (long) i * interval, price));
+        }
+        return pts;
+    }
+
+    // ── Inner DTOs ─────────────────────────────────────────────────────────────
+
     @Data
     private static class FinnhubQuote {
-        @JsonProperty("c") private double currentPrice;
-        @JsonProperty("d") private double change;
+        @JsonProperty("c")  private double currentPrice;
+        @JsonProperty("d")  private double change;
         @JsonProperty("dp") private double changePercent;
+        @JsonProperty("o")  private double open;
+        @JsonProperty("h")  private double dayHigh;
+        @JsonProperty("l")  private double dayLow;
+        @JsonProperty("pc") private double prevClose;
     }
+
 }
